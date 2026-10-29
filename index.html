@@ -756,7 +756,8 @@ async function makePDF(c,notes,fname){
   try{await document.fonts.ready;
     // shrink a page that would overflow A4 so each note stays on one sheet
     stage.querySelectorAll('.a4').forEach(pg=>{const max=pg.offsetWidth*297/210;if(pg.scrollHeight>max){pg.style.fontSize=(14.5*Math.max(.78,max/pg.scrollHeight)).toFixed(2)+'px'}pg.style.height=(max-2)+'px';pg.style.overflow='hidden'});
-    await html2pdf().set({margin:0,filename:fname,image:{type:'jpeg',quality:.96},html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css'],before:'.pg-break'}}).from($('#pdfRoot')).outputPdf('blob').then(b=>download(b,fname));
+    const sy=window.scrollY,sx=window.scrollX;window.scrollTo(0,0);
+    try{await html2pdf().set({margin:0,filename:fname,image:{type:'jpeg',quality:.96},html2canvas:{scale:2,backgroundColor:'#ffffff',scrollX:0,scrollY:0},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css'],before:'.pg-break'}}).from($('#pdfRoot')).outputPdf('blob').then(b=>download(b,fname))}finally{window.scrollTo(sx,sy)}
     if(!isNative())toast('ดาวน์โหลด PDF แล้ว')}catch(e){console.error(e);toast('สร้าง PDF ไม่สำเร็จ: '+e.message)}
   finally{stage.innerHTML='';busy=false}
 }
