@@ -37,7 +37,7 @@ header.top{position:sticky;top:0;z-index:20;background:var(--paper);border-botto
 .brand b{font:600 18px/1.2 var(--f-display);display:block}
 .brand small{color:var(--muted);font-size:12.5px}
 .clsbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-select,input[type=text],input[type=number],input[type=date],textarea{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 9px;min-width:0}
+select,input[type=text],input[type=number],input[type=date],input[type=password],textarea{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 9px;min-width:0}
 textarea{width:100%;resize:vertical}
 select:focus,input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .btn{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:6px 12px;cursor:pointer;white-space:nowrap}
@@ -108,6 +108,16 @@ legend{font-weight:700;padding:0 6px;font-family:var(--f-display)}
 .checks label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .checks input{width:17px;height:17px;accent-color:var(--accent)}
 .hint{font-size:13px;color:var(--muted)}
+.login{min-height:100vh;display:grid;place-items:center;padding-block:24px}
+.lcard{width:min(430px,100%);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:26px 24px;display:flex;flex-direction:column;gap:14px}
+.lcard .lh{display:flex;gap:12px;align-items:center}.lcard .lh img{width:58px;height:58px}
+.lcard .lh b{font:600 21px/1.25 var(--f-display);display:block}
+.ltabs{display:flex;gap:4px;background:var(--soft);border-radius:8px;padding:3px}
+.ltabs button{flex:1;border:0;background:none;padding:7px;border-radius:6px;cursor:pointer;font-weight:600;color:var(--muted)}
+.ltabs button.on{background:var(--paper);color:var(--accent)}
+.lerr{color:var(--abs);font-size:13.5px;min-height:1.2em;margin:0}
+.userchip{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
+.userchip b{color:var(--ink);font-weight:600}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;z-index:50;font-weight:600;transition:opacity .2s}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .ex-tag{display:inline-block;background:var(--late-bg);color:var(--late);font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;margin-left:6px}
@@ -135,18 +145,21 @@ legend{font-weight:700;padding:0 6px;font-family:var(--f-display)}
 </style>
 </head>
 <body>
-<header class="top">
+<section class="wrap login" id="loginView" hidden></section>
+<header class="top" id="appHeader" hidden>
   <div class="wrap topin">
     <div class="brand"><img id="brandLogo" alt="ตราวิทยาลัย"><div><b>สมุดบันทึกการสอน</b><small id="brandSub"></small></div></div>
     <div class="clsbar">
+      <select id="termSel" aria-label="ภาคเรียน/ปีการศึกษา"></select>
       <select id="clsSel" aria-label="เลือกรายวิชา/กลุ่มเรียน"></select>
       <button class="btn" id="addCls">+ เพิ่มวิชา</button>
       <button class="btn pri" id="xlsBtn">ดาวน์โหลด Excel</button>
+      <span class="userchip"><span>ผู้ใช้ <b id="userName"></b></span><button class="btn sm" id="logoutBtn">ออกจากระบบ</button></span>
     </div>
   </div>
   <div class="wrap"><nav class="tabs" id="tabs" role="tablist"></nav></div>
 </header>
-<main class="wrap" id="view"></main>
+<main class="wrap" id="view" hidden></main>
 <div id="pdfStage"></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
 <input type="file" id="logoIn" accept="image/*" hidden>
@@ -173,7 +186,7 @@ const uid=()=>Math.random().toString(36).slice(2,10);
 const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n};
 
 /* ---------- state ---------- */
-function newClass(o={}){return Object.assign({id:uid(),code:'',name:'',credit:'',tpn:'',group:'',advisor:'',headDept:'',weekLabel:'1-18',
+function newClass(o={}){return Object.assign({id:uid(),code:'',name:'',credit:'',tpn:'',group:'',advisor:'',headDept:'',weekLabel:'1-18',units:[],term:S?S.settings.term:'',year:S?S.settings.year:'',
   students:[],att:{},weekDates:{},colTopics:Array(MONTHS*PER).fill(''),colDates:Array(MONTHS*PER).fill(''),finalTopic:'',months:['','','','','',''],maxes:Array(MONTHS*PER).fill(''),scores:{},final:{},finalMax:'',affect:{},notes:[]},o)}
 function seed(){
   const c=newClass({code:'20104-2004',name:'เครื่องวัดไฟฟ้า',credit:'2',tpn:'1-3-2',group:'ชฟ.1/1',example:true,
@@ -186,6 +199,11 @@ function seed(){
   c.notes.push(blankNote(c,{no:1,week:1,unitNo:'1',unitName:'ความรู้เบื้องต้นเกี่ยวกับเครื่องวัดไฟฟ้า',hours:'4',topic:'ชนิดและหลักการทำงานของเครื่องวัดไฟฟ้า',
     methods:['บรรยาย','ปฏิบัติ'],media:['โปรแกรมนำเสนอ','ใบงาน'],planFull:true,fitTime:true,learner:['มีความสนใจในการเรียน','มีความรู้ และทักษะวิชาชีพ'],
     traits:['มีความรับผิดชอบ','มีวินัย'],evalHas:true,evals:['สอบภาคปฏิบัติ','แบบสังเกต'],passN:'5',failN:'0'}));fillAttendance(c,c.notes[0]);
+  c.term='1';c.year='2569';
+  c.units=[{id:uid(),no:'1',name:'ความรู้เบื้องต้นเกี่ยวกับเครื่องวัดไฟฟ้า',hours:'4',topics:'ชนิดและหลักการทำงานของเครื่องวัดไฟฟ้า\nความปลอดภัยในการใช้เครื่องวัด'},
+    {id:uid(),no:'2',name:'แอมมิเตอร์และโวลต์มิเตอร์',hours:'8',topics:'การขยายย่านวัดแอมมิเตอร์\nการขยายย่านวัดโวลต์มิเตอร์'},
+    {id:uid(),no:'3',name:'โอห์มมิเตอร์และมัลติมิเตอร์',hours:'8',topics:'การวัดความต้านทาน\nการใช้มัลติมิเตอร์แบบดิจิทัล'}];
+  c.notes[0].unitId=c.units[0].id;
   return {settings:{college:'วิทยาลัยการอาชีพเขาย้อย',teacher:'นายฤทธิไกร ด้วงจุมพล',dept:'ช่างไฟฟ้ากำลัง',term:'1',year:'2569',
     headCurr:'นายกีรติ  ศักดิ์บูรณกุลชัย',headCurrTitle:'หัวหน้างานพัฒนาหลักสูตรการเรียนการสอน',deputy:'นายพีระพงษ์  เผือกเหลือง',deputyTitle:'รองผู้อำนวยการฝ่ายวิชาการ',logo:''},
     classes:[c]};
@@ -193,17 +211,23 @@ function seed(){
 function blankNote(c,o={}){return Object.assign({id:uid(),no:(c.notes.length+1),week:1,date:new Date().toISOString().slice(0,10),unitNo:'',unitName:'',hours:'',topic:'',group:c.group,
   methods:[],methodOther:'',media:[],mediaOther:'',planFull:null,fitTime:null,learner:[],traits:[],evalHas:null,evals:[],evalOther:'',
   presentN:'',presentText:'',absentN:'',absentText:'',passN:'',failN:'',problem:'',solution:''},o)}
-function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.classes)return s}catch(e){}return null}
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v);return true}catch(e){toast('บันทึกลงเครื่องไม่ได้: '+e.message);return false}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+const dataKey=u=>'teacherbook.d.'+u, uiKey=u=>'teacherbook.ui.'+u;
+function loadUser(u){try{const s=JSON.parse(LS.get(dataKey(u)));if(s&&s.classes)return s}catch(e){}return null}
 function migrate(S){const st=S.settings;st.risk=Object.assign({att:80,score:50,missing:3,run:3,affect:10},st.risk||{});
   ['emailTo','emailCc','gasUrl','headDept','headDeptEmail'].forEach(k=>{if(st[k]==null)st[k]=''});if(!st.headDeptTitle)st.headDeptTitle='หัวหน้าแผนกวิชา';if(!st.gasKey)st.gasKey=uid()+uid();
+  S.terms=S.terms||[];const addT=k=>{if(k&&k!=='/'&&!S.terms.includes(k))S.terms.push(k)};
+  S.classes.forEach(c=>{if(!c.term){c.term=st.term;c.year=st.year}c.units=c.units||[];addT(c.term+'/'+c.year)});addT(st.term+'/'+st.year);
   S.classes.forEach(c=>{c.weekDates=c.weekDates||{};c.colTopics=c.colTopics||Array(MONTHS*PER).fill('');c.colDates=c.colDates||Array(MONTHS*PER).fill('');if(c.finalTopic==null)c.finalTopic=''});return S}
-let S=migrate(load()||seed());
-let UI=(()=>{try{return JSON.parse(localStorage.getItem(KEY+'.ui'))||{}}catch(e){return{}}})();
-UI.tab=UI.tab||'check'; UI.week=UI.week||1;
-if(!S.classes.find(c=>c.id===UI.cls))UI.cls=S.classes[0]?.id;
+let S=null,UI={},USER=null;
 let saveT;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.setItem(KEY+'.ui',JSON.stringify(UI))}catch(e){toast('บันทึกลงเครื่องไม่ได้: '+e.message)}},250)}
-const cls=()=>S.classes.find(c=>c.id===UI.cls);
+function flush(){clearTimeout(saveT);if(USER&&S){LS.set(dataKey(USER),JSON.stringify(S));LS.set(uiKey(USER),JSON.stringify(UI))}}
+function save(){clearTimeout(saveT);saveT=setTimeout(flush,250)}
+const curKey=()=>S.settings.term+'/'+S.settings.year;
+const inTerm=c=>c.term+'/'+c.year===curKey();
+const termClasses=()=>S.classes.filter(inTerm);
+const sortTerms=a=>[...a].sort((x,y)=>{const [t1,y1]=x.split('/').map(Number),[t2,y2]=y.split('/').map(Number);return y2-y1||t2-t1});
+const cls=()=>S.classes.find(c=>c.id===UI.cls&&inTerm(c));
 const logo=()=>S.settings.logo||DEFAULT_LOGO;
 function toast(m){let t=$('#toastEl');if(!t){t=document.createElement('div');t.id='toastEl';t.className='toast';document.body.appendChild(t)}t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2600)}
 
@@ -247,15 +271,20 @@ const TABS=[['check','เช็คชื่อ'],['score','คะแนน'],['a
 function renderShell(){
   $('#brandLogo').src=logo();
   $('#brandSub').textContent=`${S.settings.college} · ภาคเรียนที่ ${S.settings.term}/${S.settings.year}`;
-  $('#clsSel').innerHTML=S.classes.map(c=>`<option value="${c.id}" ${c.id===UI.cls?'selected':''}>${esc(c.code||'(ไม่มีรหัส)')} ${esc(c.name)} · ${esc(c.group)}${c.example?' (ตัวอย่าง)':''}</option>`).join('')||'<option>ยังไม่มีวิชา</option>';
+  $('#userName').textContent=S.settings.teacher||USER;
+  $('#termSel').innerHTML=sortTerms(S.terms).map(k=>`<option value="${esc(k)}" ${k===curKey()?'selected':''}>ภาคเรียนที่ ${esc(k)}</option>`).join('')+'<option value="__new">+ เพิ่มภาคเรียนใหม่…</option>';
+  $('#clsSel').innerHTML=termClasses().map(c=>`<option value="${c.id}" ${c.id===UI.cls?'selected':''}>${esc(c.code||'(ไม่มีรหัส)')} ${esc(c.name)} · ${esc(c.group)}${c.example?' (ตัวอย่าง)':''}</option>`).join('')||'<option>ยังไม่มีวิชา</option>';
   $('#tabs').innerHTML=TABS.map(([k,t])=>`<button role="tab" data-tab="${k}" aria-selected="${UI.tab===k}">${t}</button>`).join('');
 }
-function render(){renderShell();const c=cls();const v=$('#view');
-  if(!c&&UI.tab!=='settings'){v.innerHTML=`<div class="panel empty">ยังไม่มีรายวิชา กด “+ เพิ่มวิชา” ด้านบนเพื่อเริ่ม</div>`;return}
+function render(){if(!cls())UI.cls=termClasses()[0]?.id;renderShell();const c=cls();const v=$('#view');
+  if(!c&&UI.tab!=='settings'){v.innerHTML=`<div class="panel empty">ภาคเรียนที่ ${esc(curKey())} ยังไม่มีรายวิชา กด “+ เพิ่มวิชา” ด้านบน หรือไปที่แท็บ “ตั้งค่า” เพื่อคัดลอกรายวิชาจากภาคเรียนอื่น</div>`;save();return}
   ({check:vCheck,score:vScore,affect:vAffect,risk:vRisk,notes:vNotes,roster:vRoster,settings:vSettings})[UI.tab](v,c);save()}
 $('#tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(b){UI.tab=b.dataset.tab;render()}};
 $('#clsSel').onchange=e=>{UI.cls=e.target.value;UI.noteId=null;render()};
-$('#addCls').onclick=()=>{const c=newClass({group:'',name:'วิชาใหม่'});S.classes.push(c);UI.cls=c.id;UI.tab='roster';render();toast('เพิ่มรายวิชาแล้ว กรอกข้อมูลวิชาและรายชื่อนักเรียน')};
+$('#termSel').onchange=e=>{const k=e.target.value;if(k==='__new'){UI.tab='settings';render();const p=$('#termPanel');p&&p.scrollIntoView({block:'center'});$('#ntYear')?.focus();return}
+  const [t,y]=k.split('/');S.settings.term=t;S.settings.year=y;UI.cls=null;UI.noteId=null;render();toast(`เปลี่ยนเป็นภาคเรียนที่ ${k}`)};
+$('#logoutBtn').onclick=logout;
+$('#addCls').onclick=()=>{const c=newClass({group:'',name:'วิชาใหม่',term:S.settings.term,year:S.settings.year});S.classes.push(c);UI.cls=c.id;UI.tab='roster';render();toast('เพิ่มรายวิชาแล้ว กรอกข้อมูลวิชาและรายชื่อนักเรียน')};
 $('#xlsBtn').onclick=()=>exportExcel(cls());
 const exTag=c=>c.example?'<span class="ex-tag">ข้อมูลตัวอย่าง</span>':'';
 
@@ -376,16 +405,17 @@ function vRoster(v,c){
       name=name.replace(/^\d{1,3}[.)]?\s+/,'');c.students.push({id:uid(),sid,name})});
     c.example=false;render();toast(`เพิ่ม ${lines.length} รายชื่อแล้ว`)};
   $('#delCls').onclick=e=>{if(!e.target.dataset.sure){e.target.dataset.sure=1;e.target.textContent='กดอีกครั้งเพื่อยืนยันการลบ';return}
-    S.classes=S.classes.filter(x=>x.id!==c.id);UI.cls=S.classes[0]?.id;UI.tab='roster';render()};
+    S.classes=S.classes.filter(x=>x.id!==c.id);UI.cls=null;UI.tab='roster';render()};
 }
 
 /* ---------- settings ---------- */
 function vSettings(v){
   const st=S.settings;
   v.innerHTML=`<div class="stack"><div><h2>ตั้งค่า</h2><p class="sub">ข้อมูลที่ใช้ทุกวิชา: ชื่อวิทยาลัย ครูผู้สอน และผู้ลงนามในบันทึกหลังการสอน</p></div>
-  <div class="panel grid2">${[['college','ชื่อวิทยาลัย'],['teacher','ชื่อ-นามสกุล ครูผู้สอน'],['dept','แผนกวิชา'],['headDept','หัวหน้าแผนกวิชา (ชื่อ-นามสกุล)'],['headDeptTitle','ตำแหน่งหัวหน้าแผนก (ใช้ในช่องลงชื่อ)'],['headDeptEmail','อีเมลหัวหน้าแผนกวิชา'],['term','ภาคเรียนที่'],['year','ปีการศึกษา'],
+  <div class="panel grid2">${[['college','ชื่อวิทยาลัย'],['teacher','ชื่อ-นามสกุล ครูผู้สอน'],['dept','แผนกวิชา'],['headDept','หัวหน้าแผนกวิชา (ชื่อ-นามสกุล)'],['headDeptTitle','ตำแหน่งหัวหน้าแผนก (ใช้ในช่องลงชื่อ)'],['headDeptEmail','อีเมลหัวหน้าแผนกวิชา'],
     ['headCurr','ผู้ลงนาม 2 (ชื่อ)'],['headCurrTitle','ผู้ลงนาม 2 (ตำแหน่ง)'],['deputy','ผู้ลงนาม 3 (ชื่อ)'],['deputyTitle','ผู้ลงนาม 3 (ตำแหน่ง)']]
     .map(([k,l])=>`<label class="f">${l}<input type="text" id="sf_${k}" data-sf="${k}" value="${esc(st[k])}"></label>`).join('')}</div>
+  ${termPanel()}
   <div class="panel row"><img src="${logo()}" alt="" style="width:64px;height:64px"><div style="flex:1;min-width:200px"><b>ตราวิทยาลัยบนหน้าปก</b><div class="hint">ใช้ตราจากไฟล์แบบฟอร์มเดิม เปลี่ยนเป็นรูปอื่นได้</div></div>
    <button class="btn" id="chLogo">เปลี่ยนรูป</button>${st.logo?'<button class="btn" id="rsLogo">ใช้ตราเดิม</button>':''}</div>
   <div class="panel stack"><div><b>เกณฑ์นักเรียนกลุ่มเสี่ยง</b><div class="hint">ใช้ทุกวิชา คำนวณจากสัปดาห์ที่เช็คชื่อแล้วและช่องคะแนนที่มีการให้คะแนนแล้วเท่านั้น</div></div>
@@ -405,6 +435,9 @@ function vSettings(v){
     <label class="f" style="margin-top:8px">URL เว็บแอป Apps Script<input type="text" id="sf_gasUrl" data-sf="gasUrl" value="${esc(st.gasUrl)}" placeholder="https://script.google.com/macros/s/.../exec"></label>
     <p class="hint">โค้ดมีรหัสลับของคุณ (${esc(st.gasKey.slice(0,6))}…) อยู่ คนที่ไม่มีรหัสนี้ใช้ URL ส่งอีเมลแทนคุณไม่ได้ อย่าเผยแพร่โค้ดนี้</p>
    </details></div>
+  <div class="panel stack"><div><b>บัญชีผู้ใช้: ${esc(USER)}</b><div class="hint">เปลี่ยนรหัสผ่านสำหรับเข้าสู่ระบบในเครื่องนี้</div></div>
+   <div class="grid2"><label class="f">รหัสผ่านปัจจุบัน<input type="password" id="pwOld" autocomplete="current-password"></label><label class="f">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)<input type="password" id="pwNew" autocomplete="new-password"></label><label class="f">ยืนยันรหัสผ่านใหม่<input type="password" id="pwNew2" autocomplete="new-password"></label></div>
+   <div class="row"><button class="btn" id="pwBtn">เปลี่ยนรหัสผ่าน</button></div></div>
   <div class="panel stack"><b>สำรองข้อมูล</b>
    <p class="hint" style="margin:0">ข้อมูลทั้งหมดเก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ควรกด “ดาวน์โหลดไฟล์สำรอง” เป็นประจำ แล้วเก็บไว้ใน Google Drive เพื่อย้ายไปใช้เครื่องอื่นหรือกู้คืนเมื่อล้างเบราว์เซอร์</p>
    <div class="row"><button class="btn pri" id="bk">ดาวน์โหลดไฟล์สำรอง (.json)</button><button class="btn" id="rs">กู้คืนจากไฟล์สำรอง</button></div></div>
@@ -412,16 +445,87 @@ function vSettings(v){
   v.querySelectorAll('[data-sf]').forEach(i=>i.oninput=()=>{st[i.dataset.sf]=i.value.trim();renderShell();save()});
   v.querySelectorAll('[data-rk]').forEach(i=>i.oninput=()=>{if(i.value!=='')st.risk[i.dataset.rk]=num(i.value);save()});
   $('#cpGas').onclick=()=>copyText(gasCode(),$('#gasCode'));
+  bindTermPanel();
+  $('#pwBtn').onclick=async()=>{const o=$('#pwOld').value,n1=$('#pwNew').value,n2=$('#pwNew2').value;const us=users(),me=us.find(x=>x.u===USER);
+    if(!me||await hashPw(o,me.salt)!==me.hash)return toast('รหัสผ่านปัจจุบันไม่ถูกต้อง');if(n1.length<6)return toast('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');if(n1!==n2)return toast('ยืนยันรหัสผ่านใหม่ไม่ตรงกัน');
+    me.salt=uid()+uid();me.hash=await hashPw(n1,me.salt);saveUsers(us);['pwOld','pwNew','pwNew2'].forEach(i=>$('#'+i).value='');toast('เปลี่ยนรหัสผ่านแล้ว')};
   $('#chLogo').onclick=()=>$('#logoIn').click();
   $('#rsLogo')&&($('#rsLogo').onclick=()=>{st.logo='';render()});
   $('#bk').onclick=()=>download(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),`สำรองข้อมูลสมุดครู ${new Date().toISOString().slice(0,10)}.json`);
   $('#rs').onclick=()=>$('#fileIn').click();
   $('#wipe').onclick=e=>{if(!e.target.dataset.sure){e.target.dataset.sure=1;e.target.textContent='กดอีกครั้งเพื่อยืนยัน';return}
-    S={settings:Object.assign({},S.settings),classes:[]};UI.cls=null;render()};
+    S={settings:Object.assign({},S.settings),classes:[],terms:[curKey()]};UI.cls=null;render()};
 }
 $('#logoIn').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const cv=document.createElement('canvas');const k=Math.min(1,300/Math.max(img.width,img.height));
   cv.width=img.width*k;cv.height=img.height*k;cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);S.settings.logo=cv.toDataURL('image/png');render()};img.src=r.result};r.readAsDataURL(f);e.target.value=''};
-$('#fileIn').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const d=JSON.parse(t);if(!d.classes)throw 0;S=d;UI.cls=S.classes[0]?.id;render();toast('กู้คืนข้อมูลเรียบร้อย')}).catch(()=>toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของสมุดครู'));e.target.value=''};
+$('#fileIn').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const d=JSON.parse(t);if(!d.classes)throw 0;S=migrate(d);UI.cls=null;render();toast('กู้คืนข้อมูลเรียบร้อย')}).catch(()=>toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของสมุดครู'));e.target.value=''};
+
+/* ---------- terms ---------- */
+function termPanel(){const cur=curKey();const [t,y]=cur.split('/');const nt=t==='1'?'2':'1',ny=t==='1'?y:String(num(y)+1);
+  return `<div class="panel stack" id="termPanel"><div><b>ภาคเรียน / ปีการศึกษา</b><div class="hint">แต่ละภาคเรียนมีรายวิชา รายชื่อ คะแนน และบันทึกของตัวเอง สลับภาคเรียนได้จากเมนูด้านบน</div></div>
+   <div class="tscroll"><table class="t" style="width:100%"><thead><tr><th class="l">ภาคเรียน</th><th>รายวิชา</th><th></th></tr></thead><tbody>
+   ${sortTerms(S.terms).map(k=>{const n=S.classes.filter(c=>c.term+'/'+c.year===k).length;return `<tr><td class="l"><b>ภาคเรียนที่ ${esc(k)}</b></td><td>${n}</td>
+     <td>${k===cur?'<span class="chip c-ok">กำลังใช้</span>':`<button class="btn sm" data-useterm="${esc(k)}">ใช้ภาคเรียนนี้</button>${n?'':` <button class="btn sm danger" data-delterm="${esc(k)}">ลบ</button>`}`}</td></tr>`}).join('')}</tbody></table></div>
+   <div class="row" style="align-items:flex-end"><label class="f">ภาคเรียนที่<select id="ntTerm"><option value="1" ${nt==='1'?'selected':''}>1</option><option value="2" ${nt==='2'?'selected':''}>2</option><option value="3">3 (ฤดูร้อน)</option></select></label>
+    <label class="f">ปีการศึกษา<input type="number" id="ntYear" value="${esc(ny)}" style="width:110px"></label>
+    <div class="checks" style="padding-bottom:6px"><label><input type="checkbox" id="ntCopy"> คัดลอกรายวิชา รายชื่อนักเรียน และหน่วยการสอนจากภาคเรียนที่ ${esc(cur)}</label></div>
+    <button class="btn pri" id="ntAdd">เพิ่มภาคเรียน</button></div></div>`}
+function bindTermPanel(){
+  document.querySelectorAll('[data-useterm]').forEach(b=>b.onclick=()=>{const [t,y]=b.dataset.useterm.split('/');S.settings.term=t;S.settings.year=y;UI.cls=null;render();toast(`เปลี่ยนเป็นภาคเรียนที่ ${b.dataset.useterm}`)});
+  document.querySelectorAll('[data-delterm]').forEach(b=>b.onclick=()=>{S.terms=S.terms.filter(k=>k!==b.dataset.delterm);render()});
+  $('#ntAdd').onclick=()=>{const t=$('#ntTerm').value,y=$('#ntYear').value.trim();if(!/^\d{4}$/.test(y))return toast('ใส่ปีการศึกษาเป็นเลข 4 หลัก เช่น 2570');
+    const k=t+'/'+y;if(S.terms.includes(k))return toast(`มีภาคเรียนที่ ${k} อยู่แล้ว`);
+    const from=termClasses();S.terms.push(k);let n=0;
+    if($('#ntCopy').checked)from.forEach(c=>{n++;S.classes.push(newClass({code:c.code,name:c.name,credit:c.credit,tpn:c.tpn,group:c.group,advisor:c.advisor,headDept:c.headDept,weekLabel:c.weekLabel,
+      students:c.students.map(s=>({id:uid(),sid:s.sid,name:s.name})),units:c.units.map(u=>Object.assign({},u,{id:uid()})),term:t,year:y}))});
+    S.settings.term=t;S.settings.year=y;UI.cls=null;render();toast(`เพิ่มภาคเรียนที่ ${k} แล้ว${n?` (คัดลอก ${n} วิชา)`:''}`)};
+}
+
+/* ---------- login (accounts stored in this browser) ---------- */
+const USERS_KEY='teacherbook.users',LEGACY='teacherbook.v1';
+function users(){try{return JSON.parse(LS.get(USERS_KEY))||[]}catch(e){return[]}}
+function saveUsers(a){LS.set(USERS_KEY,JSON.stringify(a))}
+async function hashPw(pw,salt){if(!(window.crypto&&crypto.subtle))throw new Error('เบราว์เซอร์นี้ไม่รองรับการเข้ารหัส ใช้ Chrome หรือ Edge รุ่นใหม่');
+  const enc=new TextEncoder();const k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
+  const b=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(salt),iterations:150000,hash:'SHA-256'},k,256);return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function sessionUser(){try{const s=sessionStorage.getItem('teacherbook.session');if(s)return s}catch(e){}
+  try{const r=JSON.parse(LS.get('teacherbook.remember'));if(r&&r.exp>Date.now())return r.u}catch(e){}return null}
+function setSession(u,remember){try{sessionStorage.setItem('teacherbook.session',u)}catch(e){}if(remember)LS.set('teacherbook.remember',JSON.stringify({u,exp:Date.now()+30*864e5}));else LS.del('teacherbook.remember')}
+function start(u){USER=u;const me=users().find(x=>x.u===u);
+  let d=loadUser(u);if(!d){d=seed();if(me&&me.name)d.settings.teacher=me.name}
+  S=migrate(d);try{UI=JSON.parse(LS.get(uiKey(u)))||{}}catch(e){UI={}}UI.tab=UI.tab||'check';UI.week=UI.week||1;
+  $('#loginView').hidden=true;$('#appHeader').hidden=false;$('#view').hidden=false;render()}
+function logout(){flush();try{sessionStorage.removeItem('teacherbook.session')}catch(e){}LS.del('teacherbook.remember');USER=null;S=null;UI={};
+  $('#appHeader').hidden=true;$('#view').hidden=true;$('#view').innerHTML='';showLogin('login')}
+function showLogin(mode){const us=users();if(!us.length)mode='register';const legacy=!us.length&&LS.get(LEGACY);
+  const L=$('#loginView');L.hidden=false;
+  L.innerHTML=`<form class="lcard" id="lForm" autocomplete="on"><div class="lh"><img src="${DEFAULT_LOGO}" alt="ตราวิทยาลัย"><div><b>สมุดบันทึกการสอน</b><span class="hint">เช็คชื่อ · คะแนน · จิตพิสัย · บันทึกหลังการสอน</span></div></div>
+   ${us.length?`<div class="ltabs"><button type="button" class="${mode==='login'?'on':''}" data-lm="login">เข้าสู่ระบบ</button><button type="button" class="${mode==='register'?'on':''}" data-lm="register">สร้างบัญชีครู</button></div>`:'<div><b>สร้างบัญชีครูเพื่อเริ่มใช้งาน</b></div>'}
+   <label class="f">ชื่อผู้ใช้<input type="text" id="lUser" autocomplete="username" autocapitalize="none" placeholder="เช่น rittikrai" required></label>
+   ${mode==='register'?'<label class="f">ชื่อ-นามสกุล ครูผู้สอน<input type="text" id="lName" autocomplete="name" placeholder="นายฤทธิไกร ด้วงจุมพล"></label>':''}
+   <label class="f">รหัสผ่าน<input type="password" id="lPw" autocomplete="${mode==='register'?'new-password':'current-password'}" required></label>
+   ${mode==='register'?'<label class="f">ยืนยันรหัสผ่าน<input type="password" id="lPw2" autocomplete="new-password" required></label>':''}
+   ${mode==='register'&&legacy?'<div class="checks"><label><input type="checkbox" id="lLegacy" checked> นำข้อมูลเดิมที่บันทึกไว้ในเครื่องนี้มาใช้กับบัญชีนี้</label></div>':''}
+   ${mode==='login'?'<div class="checks"><label><input type="checkbox" id="lRem"> จำการเข้าสู่ระบบไว้ 30 วัน (เครื่องส่วนตัวเท่านั้น)</label></div>':''}
+   <p class="lerr" id="lErr"></p>
+   <button class="btn pri" type="submit" style="padding:9px">${mode==='register'?'สร้างบัญชีและเข้าสู่ระบบ':'เข้าสู่ระบบ'}</button>
+   <p class="hint" style="margin:0">บัญชีและข้อมูลเก็บไว้ในเบราว์เซอร์ของเครื่องนี้ ครูแต่ละคนมีข้อมูลแยกกัน ถ้าลืมรหัสผ่านจะเปิดบัญชีเดิมไม่ได้ ควรดาวน์โหลดไฟล์สำรองในแท็บ “ตั้งค่า” เป็นประจำ</p></form>`;
+  L.querySelectorAll('[data-lm]').forEach(b=>b.onclick=()=>showLogin(b.dataset.lm));
+  $('#lUser').focus();
+  $('#lForm').onsubmit=async e=>{e.preventDefault();const err=m=>{$('#lErr').textContent=m};
+    const u=$('#lUser').value.trim().toLowerCase(),pw=$('#lPw').value;
+    try{if(mode==='register'){
+      if(!/^[a-z0-9._-]{3,30}$/.test(u))return err('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - ยาว 3–30 ตัว');
+      if(users().some(x=>x.u===u))return err('มีชื่อผู้ใช้นี้ในเครื่องแล้ว');
+      if(pw.length<6)return err('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');if(pw!==$('#lPw2').value)return err('ยืนยันรหัสผ่านไม่ตรงกัน');
+      const salt=uid()+uid(),name=$('#lName').value.trim();const all=users();all.push({u,name,salt,hash:await hashPw(pw,salt),created:Date.now()});saveUsers(all);
+      if($('#lLegacy')?.checked){const old=LS.get(LEGACY);if(old){LS.set(dataKey(u),old);const oui=LS.get(LEGACY+'.ui');if(oui)LS.set(uiKey(u),oui);LS.del(LEGACY);LS.del(LEGACY+'.ui')}}
+      setSession(u,false);start(u);toast('สร้างบัญชีแล้ว ยินดีต้อนรับ')
+    }else{const me=users().find(x=>x.u===u);if(!me||await hashPw(pw,me.salt)!==me.hash)return err('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      setSession(u,$('#lRem').checked);start(u)}}catch(ex){err(ex.message)}};
+}
+function boot(){const u=sessionUser();if(u&&users().some(x=>x.u===u))start(u);else showLogin('login')}
+addEventListener('beforeunload',flush);
 
 /* ---------- risk report ---------- */
 function gasCode(){return `// สมุดบันทึกการสอน: ส่งอีเมลแจ้งนักเรียนกลุ่มเสี่ยง
@@ -448,7 +552,7 @@ function vRisk(v,c){
   const all=c.students.map((s,i)=>({s,i,r:riskOf(c,s,h,u)}));const list=all.filter(x=>x.r.level).sort((a,b)=>b.r.level-a.r.level||a.i-b.i);
   const nh=list.filter(x=>x.r.level===2).length,nw=list.length-nh;
   UI.rkScope=UI.rkScope||'one';
-  const scope=UI.rkScope==='all'?S.classes:[c];const m=riskMsg(scope);
+  const scope=UI.rkScope==='all'?termClasses():[c];const m=riskMsg(scope);
   const lvChip=l=>`<span class="chip ${l===2?'c-abs':l===1?'c-late':'c-ok'}">${LV[l]}</span>`;
   v.innerHTML=`<div class="stack"><div><h2>นักเรียนกลุ่มเสี่ยง ${exTag(c)}</h2><p class="sub">${esc(c.code)} ${esc(c.name)} · กลุ่ม ${esc(c.group)} · เช็คชื่อแล้ว ${h.length} สัปดาห์ · มีคะแนนแล้ว ${u.length} ช่อง</p></div>
    <div class="counts"><span class="chip c-abs">เสี่ยงสูง ${nh}</span><span class="chip c-late">เฝ้าระวัง ${nw}</span><span class="chip c-ok">ปกติ ${c.students.length-list.length}</span></div>
@@ -456,10 +560,10 @@ function vRisk(v,c){
     ${list.map(x=>`<tr><td>${x.i+1}</td><td class="l">${esc(x.s.name)}<div class="hint">${esc(x.s.sid)}</div></td><td>${lvChip(x.r.level)}</td><td>${x.r.attPct==null?'-':fmt1(x.r.attPct)+'%'}</td><td>${x.r.abs}/${x.r.leave}</td><td>${x.r.missing}</td><td>${x.r.scPct==null?'-':fmt1(x.r.scPct)+'%'}</td>
      <td class="l" style="white-space:normal;min-width:260px">${x.r.reasons.map(esc).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="panel empty">ยังไม่มีนักเรียนกลุ่มเสี่ยงในวิชานี้</div>'}
    <p class="hint" style="margin:0">เกณฑ์: เวลาเรียนต่ำกว่า ${R.att}% หรือคะแนนเก็บต่ำกว่า ${R.score}% = เสี่ยงสูง · ค้างงานตั้งแต่ ${R.missing} ชิ้น, ขาดติดต่อกัน ${R.run} สัปดาห์, เวลาเรียนใกล้เกณฑ์ = เฝ้าระวัง (ปรับได้ที่แท็บ “ตั้งค่า”)</p>
-   ${S.classes.length>1?`<div><h2 style="font-size:17px">ภาพรวมทุกวิชา</h2><div class="tscroll"><table class="t" style="width:100%"><thead><tr><th class="l">รายวิชา</th><th>กลุ่ม</th><th>นักเรียน</th><th>เสี่ยงสูง</th><th>เฝ้าระวัง</th><th></th></tr></thead><tbody>
-    ${S.classes.map(k=>{const l=riskList(k);const a=l.filter(x=>x.r.level===2).length;return `<tr><td class="l">${esc(k.code)} ${esc(k.name)}</td><td>${esc(k.group)}</td><td>${k.students.length}</td><td style="color:var(--abs);font-weight:700">${a}</td><td style="color:var(--late);font-weight:700">${l.length-a}</td><td>${k.id===c.id?'กำลังดู':`<button class="btn sm" data-goto="${k.id}">ดู</button>`}</td></tr>`}).join('')}</tbody></table></div></div>`:''}
+   ${termClasses().length>1?`<div><h2 style="font-size:17px">ภาพรวมทุกวิชา ภาคเรียนที่ ${esc(curKey())}</h2><div class="tscroll"><table class="t" style="width:100%"><thead><tr><th class="l">รายวิชา</th><th>กลุ่ม</th><th>นักเรียน</th><th>เสี่ยงสูง</th><th>เฝ้าระวัง</th><th></th></tr></thead><tbody>
+    ${termClasses().map(k=>{const l=riskList(k);const a=l.filter(x=>x.r.level===2).length;return `<tr><td class="l">${esc(k.code)} ${esc(k.name)}</td><td>${esc(k.group)}</td><td>${k.students.length}</td><td style="color:var(--abs);font-weight:700">${a}</td><td style="color:var(--late);font-weight:700">${l.length-a}</td><td>${k.id===c.id?'กำลังดู':`<button class="btn sm" data-goto="${k.id}">ดู</button>`}</td></tr>`}).join('')}</tbody></table></div></div>`:''}
    <div class="panel stack"><div><b>ส่งรายงานทางอีเมล</b><div class="hint">ข้อความมีรหัสวิชา ชื่อวิชา และรายชื่อนักเรียนที่เสี่ยงพร้อมสาเหตุ แก้ข้อความก่อนส่งได้</div></div>
-    <div class="checks"><label><input type="radio" name="rkScope" value="one" ${UI.rkScope==='one'?'checked':''}> เฉพาะวิชานี้</label><label><input type="radio" name="rkScope" value="all" ${UI.rkScope==='all'?'checked':''}> รวมทุกวิชา (${S.classes.length})</label></div>
+    <div class="checks"><label><input type="radio" name="rkScope" value="one" ${UI.rkScope==='one'?'checked':''}> เฉพาะวิชานี้</label><label><input type="radio" name="rkScope" value="all" ${UI.rkScope==='all'?'checked':''}> รวมทุกวิชาในภาคเรียนนี้ (${termClasses().length})</label></div>
     <div class="grid2"><label class="f">ส่งถึง<input type="text" id="rkTo" value="${esc(st.emailTo||st.headDeptEmail)}" placeholder="อีเมลผู้รับ คั่นด้วย ,"></label><label class="f">สำเนาถึง<input type="text" id="rkCc" value="${esc(st.emailCc)}"></label></div>
     <label class="f">หัวเรื่อง<input type="text" id="rkSub" value="${esc(m.subject)}"></label>
     <label class="f">ข้อความ<textarea id="rkBody" rows="12">${esc(m.body)}</textarea></label>
@@ -486,11 +590,14 @@ function vNotes(v,c){
   if(!c.notes.find(n=>n.id===UI.noteId))UI.noteId=c.notes[c.notes.length-1]?.id;
   const n=c.notes.find(x=>x.id===UI.noteId);
   v.innerHTML=`<div class="stack"><div class="row" style="justify-content:space-between"><div><h2>บันทึกหลังการสอน ${exTag(c)}</h2><p class="sub" style="margin:0">${esc(c.code)} ${esc(c.name)} · กลุ่ม ${esc(c.group)}</p></div>
-   <div class="row"><button class="btn" id="nNew">+ บันทึกครั้งใหม่</button>${c.notes.length?'<button class="btn" id="pdfAll">PDF ทุกครั้ง</button>':''}</div></div>
+   <div class="row"><button class="btn" id="uToggle">หน่วยการสอน (${c.units.length})</button><button class="btn" id="nNew">+ บันทึกครั้งใหม่</button>${c.notes.length?'<button class="btn" id="pdfAll">PDF ทุกครั้ง</button>':''}</div></div>
+  ${UI.unitMgr?unitPanel(c):''}
   <div class="notes"><div class="nlist">${c.notes.map(x=>`<button class="nitem ${x.id===UI.noteId?'cur':''}" data-nid="${x.id}"><b>ครั้งที่ ${esc(x.no)} · สัปดาห์ ${esc(x.week)}</b><small>${esc(thaiDate(x.date))}<br>${esc(x.topic||'ยังไม่ระบุเรื่อง')}</small></button>`).join('')||'<div class="hint">ยังไม่มีบันทึก</div>'}</div>
   <div>${n?noteForm(c,n):'<div class="panel empty">กด “+ บันทึกครั้งใหม่” เพื่อเริ่มเขียนบันทึกหลังการสอน</div>'}</div></div></div>`;
   v.querySelectorAll('[data-nid]').forEach(b=>b.onclick=()=>{UI.noteId=b.dataset.nid;render()});
-  $('#nNew').onclick=()=>{const last=c.notes[c.notes.length-1];const nn=blankNote(c,last?{no:num(last.no)+1,week:Math.min(WEEKS,num(last.week)+1),unitNo:last.unitNo,unitName:last.unitName,hours:last.hours,
+  $('#uToggle').onclick=()=>{UI.unitMgr=!UI.unitMgr;render()};
+  if(UI.unitMgr)bindUnits(c);
+  $('#nNew').onclick=()=>{const last=c.notes[c.notes.length-1];const nn=blankNote(c,last?{no:num(last.no)+1,week:Math.min(WEEKS,num(last.week)+1),unitId:last.unitId,unitNo:last.unitNo,unitName:last.unitName,hours:last.hours,
     methods:[...last.methods],media:[...last.media],planFull:last.planFull,fitTime:last.fitTime,learner:[...last.learner],traits:[...last.traits],evalHas:last.evalHas,evals:[...last.evals]}:{});
     c.notes.push(nn);UI.noteId=nn.id;fillAttendance(c,nn);render();toast('สร้างบันทึกใหม่ (คัดลอกตัวเลือกจากครั้งก่อน)')};
   $('#pdfAll')&&($('#pdfAll').onclick=()=>makePDF(c,c.notes,`บันทึกหลังการสอน ${c.code} ${c.group} ทุกครั้ง.pdf`));
@@ -503,9 +610,28 @@ function vNotes(v,c){
     if(k==='passN'||k==='failN')updPct(n);
     if(['no','week','date','topic'].includes(k)){const b=v.querySelector(`[data-nid="${n.id}"]`);b.innerHTML=`<b>ครั้งที่ ${esc(n.no)} · สัปดาห์ ${esc(n.week)}</b><small>${esc(thaiDate(n.date))}<br>${esc(n.topic||'ยังไม่ระบุเรื่อง')}</small>`}
     save()});
+  $('#n_unitSel').onchange=e=>{const u=c.units.find(x=>x.id===e.target.value);n.unitId=u?u.id:'';
+    if(u){n.unitNo=u.no;n.unitName=u.name;n.hours=u.hours;const tp=u.topics.split('\n').map(x=>x.trim()).filter(Boolean);
+      const done=c.notes.filter(x=>x!==n&&x.unitId===u.id).map(x=>x.topic);n.topic=tp.find(x=>!done.includes(x))||tp[0]||n.topic}render()};
   $('#fillAtt').onclick=()=>{fillAttendance(c,n);render();toast(`ดึงข้อมูลจากการเช็คชื่อสัปดาห์ที่ ${n.week} แล้ว`)};
   $('#pdfOne').onclick=()=>makePDF(c,[n],`บันทึกหลังการสอน ${c.code} ${c.group} ครั้งที่ ${n.no}.pdf`);
   $('#nDel').onclick=e=>{if(!e.target.dataset.sure){e.target.dataset.sure=1;e.target.textContent='กดอีกครั้งเพื่อยืนยัน';return}c.notes=c.notes.filter(x=>x!==n);UI.noteId=null;render()};
+}
+function unitPanel(c){return `<div class="panel stack"><div class="row" style="justify-content:space-between"><div><b>หน่วยการสอน</b><div class="hint">เพิ่มหน่วยตามแผนการสอน แล้วเลือกใช้ในบันทึกหลังการสอนแต่ละครั้ง · เรื่องย่อยพิมพ์บรรทัดละ 1 เรื่อง</div></div><button class="btn" id="uClose">ปิด</button></div>
+  <div class="tscroll"><table class="t" style="width:100%"><thead><tr><th>หน่วยที่</th><th class="l">ชื่อหน่วยการเรียน</th><th>ชั่วโมง</th><th class="l">เรื่องย่อย (บรรทัดละ 1 เรื่อง)</th><th>บันทึกแล้ว</th><th></th></tr></thead><tbody id="uBody">
+  ${c.units.map(u=>`<tr data-uid="${u.id}"><td><input data-u="no" value="${esc(u.no)}" style="width:44px"></td><td class="l"><input type="text" data-u="name" value="${esc(u.name)}" style="width:260px;text-align:left" placeholder="ชื่อหน่วยการเรียน"></td>
+    <td><input data-u="hours" value="${esc(u.hours)}" style="width:48px"></td><td class="l"><textarea data-u="topics" rows="2" style="min-width:260px">${esc(u.topics)}</textarea></td>
+    <td>${c.notes.filter(n=>n.unitId===u.id).length} ครั้ง</td><td><button class="btn sm danger" data-udel>ลบ</button></td></tr>`).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีหน่วยการสอน</td></tr>'}</tbody></table></div>
+  <div class="row"><button class="btn pri" id="uAdd">+ เพิ่มหน่วยการสอน</button></div></div>`}
+function bindUnits(c){
+  $('#uClose').onclick=()=>{UI.unitMgr=false;render()};
+  $('#uAdd').onclick=()=>{c.units.push({id:uid(),no:String(c.units.length+1),name:'',hours:'',topics:''});render();const ins=document.querySelectorAll('#uBody tr:last-child [data-u=name]');ins[0]?.focus()};
+  $('#uBody').addEventListener('input',e=>{const tr=e.target.closest('[data-uid]');if(!tr)return;const u=c.units.find(x=>x.id===tr.dataset.uid),k=e.target.dataset.u;u[k]=e.target.value;
+    const map={no:'unitNo',name:'unitName',hours:'hours'};if(map[k])c.notes.filter(n=>n.unitId===u.id).forEach(n=>n[map[k]]=u[k]);
+    const o=document.querySelector(`#n_unitSel option[value="${u.id}"]`);if(o)o.textContent=`หน่วยที่ ${u.no} ${u.name}`;
+    const nf=document.querySelector('#nForm');if(nf&&map[k]){const n=c.notes.find(x=>x.id===UI.noteId);if(n&&n.unitId===u.id){const el=$('#n_'+map[k]);if(el)el.value=u[k]}}save()});
+  $('#uBody').addEventListener('click',e=>{if(!e.target.hasAttribute('data-udel'))return;if(!e.target.dataset.sure){e.target.dataset.sure=1;e.target.textContent='ยืนยันลบ';return}
+    const id=e.target.closest('[data-uid]').dataset.uid;c.units=c.units.filter(x=>x.id!==id);c.notes.forEach(n=>{if(n.unitId===id)n.unitId=''});render()});
 }
 function updPct(n){const p=num(n.passN),f=num(n.failN),t=p+f;const el=$('#pctOut');if(el)el.textContent=t?`ผ่าน ${fmt(p*100/t)}% · ไม่ผ่าน ${fmt(f*100/t)}%`:''}
 function fillAttendance(c,n){const w=n.week;const pres=[],abs=[];
@@ -522,7 +648,11 @@ function noteForm(c,n){
   return `<form class="panel stack" id="nForm" onsubmit="return false">
    <div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn danger" id="nDel">ลบบันทึกนี้</button><button type="button" class="btn pri" id="pdfOne">ดาวน์โหลด PDF</button></div>
    <div class="grid2">${tx('no','สอนครั้งที่')}${tx('week','สัปดาห์ที่')}<label class="f">เมื่อวันที่<input type="date" id="n_date" data-n="date" value="${esc(n.date)}"></label>${tx('group','กลุ่มเรียน')}
-    ${tx('unitNo','หน่วยการเรียนที่')}${tx('unitName','ชื่อหน่วยการเรียน')}${tx('hours','จำนวนชั่วโมง')}${tx('topic','เรื่องที่สอน')}</div>
+    <label class="f">เลือกหน่วยการสอน<select id="n_unitSel"><option value="">— พิมพ์เอง / ไม่ระบุ —</option>${c.units.map(u=>`<option value="${u.id}" ${n.unitId===u.id?'selected':''}>หน่วยที่ ${esc(u.no)} ${esc(u.name)}</option>`).join('')}</select></label>
+    ${tx('unitNo','หน่วยการเรียนที่')}${tx('unitName','ชื่อหน่วยการเรียน')}${tx('hours','จำนวนชั่วโมง')}
+    <label class="f">เรื่องที่สอน<input type="text" id="n_topic" data-n="topic" list="topicList" value="${esc(n.topic)}"></label>
+    <datalist id="topicList">${(c.units.find(u=>u.id===n.unitId)?.topics||'').split('\n').map(x=>x.trim()).filter(Boolean).map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
+   ${c.units.length?'':'<p class="hint" style="margin:0">ยังไม่มีหน่วยการสอน กดปุ่ม “หน่วยการสอน” ด้านบนเพื่อเพิ่ม แล้วเลือกจากรายการได้ทุกครั้ง</p>'}
    <fieldset><legend>1. กิจกรรมการเรียนการสอน</legend><div class="stack" style="gap:10px">
     <div><div class="eyebrow">1.1 วิธีการสอน</div>${cb('methods',NOTE_OPTS.methods)}${tx('methodOther','อื่น ๆ (ระบุ)','margin-top:6px')}</div>
     <div><div class="eyebrow">1.2 สื่อการเรียนการสอน</div>${cb('media',NOTE_OPTS.media)}${tx('mediaOther','อื่น ๆ (ระบุ)','margin-top:6px')}</div></div></fieldset>
@@ -601,7 +731,7 @@ async function exportExcel(c){
     cell.alignment={horizontal:o.h||'center',vertical:'middle',wrapText:!!o.wrap,textRotation:o.rot};if(o.border)cell.border=box;if(o.fill)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:o.fill}};return cell};
   const mput=(ws,r1,c1,r2,c2,v,o)=>{ws.mergeCells(r1,c1,r2,c2);put(ws,r1,c1,v,o);if(o&&o.border)for(let r=r1;r<=r2;r++)for(let k=c1;k<=c2;k++)ws.getCell(r,k).border=box};
   const L=(n)=>{let s='';n++;while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26)}return s};// 0-based -> letter
-  const term=`${st.term}`,yr=`${st.year}`;
+  const term=`${c.term||st.term}`,yr=`${c.year||st.year}`;
 
   /* 1. cover */
   const cv=wb.addWorksheet('หน้าปก',{pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:1,horizontalCentered:true,margins:{left:.5,right:.5,top:.6,bottom:.5,header:.3,footer:.3}},views:[{showGridLines:false}]});
@@ -720,7 +850,7 @@ async function exportExcel(c){
   toast('ดาวน์โหลด Excel แล้ว (หน้าปก + เวลาเรียน/คะแนน + จิตพิสัย + กลุ่มเสี่ยง)');
 }
 
-render();
+boot();
 </script>
 </body>
 </html>
