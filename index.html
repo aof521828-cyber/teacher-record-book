@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Bai+Jamjuree:wght@500;600;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 /* Layout: register-book app — sticky class bar on top, tabs, one working surface per tab */
 :root{
@@ -26,6 +27,7 @@
   --accent:#7fb0ea; --accent-ink:#0b1424; --accent-soft:#1c2f4a;
   --ok:#6fd3a0; --ok-bg:#163a2a; --late:#e8c060; --late-bg:#3a2f12; --leave:#a8b3ff; --leave-bg:#252b52; --abs:#ff8f86; --abs-bg:#47201d; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -118,6 +120,10 @@ legend{font-weight:700;padding:0 6px;font-family:var(--f-display)}
 .lerr{color:var(--abs);font-size:13.5px;min-height:1.2em;margin:0}
 .userchip{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted)}
 .userchip b{color:var(--ink);font-weight:600}
+.sync{display:inline-flex;align-items:center;gap:5px;font-size:12.5px}.sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.sync.busy::before{background:var(--late)}.sync.err::before{background:var(--abs)}.sync.err{color:var(--abs)}
+.lmsg{background:var(--ok-bg);color:var(--ok);border-radius:8px;padding:10px 12px;font-size:14px;margin:0}
+.linkbtn{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;font-size:13.5px;text-decoration:underline}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;z-index:50;font-weight:600;transition:opacity .2s}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .ex-tag{display:inline-block;background:var(--late-bg);color:var(--late);font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;margin-left:6px}
@@ -154,7 +160,7 @@ legend{font-weight:700;padding:0 6px;font-family:var(--f-display)}
       <select id="clsSel" aria-label="เลือกรายวิชา/กลุ่มเรียน"></select>
       <button class="btn" id="addCls">+ เพิ่มวิชา</button>
       <button class="btn pri" id="xlsBtn">ดาวน์โหลด Excel</button>
-      <span class="userchip"><span>ผู้ใช้ <b id="userName"></b></span><button class="btn sm" id="logoutBtn">ออกจากระบบ</button></span>
+      <span class="userchip"><span class="sync" id="syncSt">บันทึกแล้ว</span><span>ผู้ใช้ <b id="userName"></b></span><button class="btn sm" id="logoutBtn">ออกจากระบบ</button></span>
     </div>
   </div>
   <div class="wrap"><nav class="tabs" id="tabs" role="tablist"></nav></div>
@@ -221,8 +227,8 @@ function migrate(S){const st=S.settings;st.risk=Object.assign({att:80,score:50,m
   S.classes.forEach(c=>{c.weekDates=c.weekDates||{};c.colTopics=c.colTopics||Array(MONTHS*PER).fill('');c.colDates=c.colDates||Array(MONTHS*PER).fill('');if(c.finalTopic==null)c.finalTopic=''});return S}
 let S=null,UI={},USER=null;
 let saveT;
-function flush(){clearTimeout(saveT);if(USER&&S){LS.set(dataKey(USER),JSON.stringify(S));LS.set(uiKey(USER),JSON.stringify(UI))}}
-function save(){clearTimeout(saveT);saveT=setTimeout(flush,250)}
+function flush(){clearTimeout(saveT);flushLocal()}
+function save(){clearTimeout(saveT);saveT=setTimeout(flush,250);if(USER&&S)queueCloud()}
 const curKey=()=>S.settings.term+'/'+S.settings.year;
 const inTerm=c=>c.term+'/'+c.year===curKey();
 const termClasses=()=>S.classes.filter(inTerm);
@@ -435,20 +441,21 @@ function vSettings(v){
     <label class="f" style="margin-top:8px">URL เว็บแอป Apps Script<input type="text" id="sf_gasUrl" data-sf="gasUrl" value="${esc(st.gasUrl)}" placeholder="https://script.google.com/macros/s/.../exec"></label>
     <p class="hint">โค้ดมีรหัสลับของคุณ (${esc(st.gasKey.slice(0,6))}…) อยู่ คนที่ไม่มีรหัสนี้ใช้ URL ส่งอีเมลแทนคุณไม่ได้ อย่าเผยแพร่โค้ดนี้</p>
    </details></div>
-  <div class="panel stack"><div><b>บัญชีผู้ใช้: ${esc(USER)}</b><div class="hint">เปลี่ยนรหัสผ่านสำหรับเข้าสู่ระบบในเครื่องนี้</div></div>
+  <div class="panel stack"><div><b>บัญชี: ${esc(EMAIL)}</b><div class="hint">ข้อมูลบันทึกไว้ในฐานข้อมูลออนไลน์ เข้าสู่ระบบด้วยอีเมลนี้จากเครื่องไหนก็ได้ ${SYNC.at?`· บันทึกขึ้นคลาวด์ล่าสุด ${esc(new Date(SYNC.at).toLocaleString('th-TH'))}`:''}</div></div>
    <div class="grid2"><label class="f">รหัสผ่านปัจจุบัน<input type="password" id="pwOld" autocomplete="current-password"></label><label class="f">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)<input type="password" id="pwNew" autocomplete="new-password"></label><label class="f">ยืนยันรหัสผ่านใหม่<input type="password" id="pwNew2" autocomplete="new-password"></label></div>
    <div class="row"><button class="btn" id="pwBtn">เปลี่ยนรหัสผ่าน</button></div></div>
   <div class="panel stack"><b>สำรองข้อมูล</b>
-   <p class="hint" style="margin:0">ข้อมูลทั้งหมดเก็บไว้ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ควรกด “ดาวน์โหลดไฟล์สำรอง” เป็นประจำ แล้วเก็บไว้ใน Google Drive เพื่อย้ายไปใช้เครื่องอื่นหรือกู้คืนเมื่อล้างเบราว์เซอร์</p>
+   <p class="hint" style="margin:0">ข้อมูลบันทึกขึ้นฐานข้อมูลออนไลน์อัตโนมัติ ไฟล์สำรองใช้เก็บสำเนาไว้เอง (เช่น ใน Google Drive) หรือนำข้อมูลจากไฟล์เดิมเข้ามา</p>
    <div class="row"><button class="btn pri" id="bk">ดาวน์โหลดไฟล์สำรอง (.json)</button><button class="btn" id="rs">กู้คืนจากไฟล์สำรอง</button></div></div>
   <div class="panel row" style="justify-content:space-between"><span class="hint">ล้างข้อมูลทั้งหมดและเริ่มใหม่ (ควรสำรองข้อมูลก่อน)</span><button class="btn danger" id="wipe">ล้างข้อมูลทั้งหมด</button></div></div>`;
   v.querySelectorAll('[data-sf]').forEach(i=>i.oninput=()=>{st[i.dataset.sf]=i.value.trim();renderShell();save()});
   v.querySelectorAll('[data-rk]').forEach(i=>i.oninput=()=>{if(i.value!=='')st.risk[i.dataset.rk]=num(i.value);save()});
   $('#cpGas').onclick=()=>copyText(gasCode(),$('#gasCode'));
   bindTermPanel();
-  $('#pwBtn').onclick=async()=>{const o=$('#pwOld').value,n1=$('#pwNew').value,n2=$('#pwNew2').value;const us=users(),me=us.find(x=>x.u===USER);
-    if(!me||await hashPw(o,me.salt)!==me.hash)return toast('รหัสผ่านปัจจุบันไม่ถูกต้อง');if(n1.length<6)return toast('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');if(n1!==n2)return toast('ยืนยันรหัสผ่านใหม่ไม่ตรงกัน');
-    me.salt=uid()+uid();me.hash=await hashPw(n1,me.salt);saveUsers(us);['pwOld','pwNew','pwNew2'].forEach(i=>$('#'+i).value='');toast('เปลี่ยนรหัสผ่านแล้ว')};
+  $('#pwBtn').onclick=async()=>{const o=$('#pwOld').value,n1=$('#pwNew').value,n2=$('#pwNew2').value;
+    if(n1.length<6)return toast('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');if(n1!==n2)return toast('ยืนยันรหัสผ่านใหม่ไม่ตรงกัน');
+    const v=await sb.auth.signInWithPassword({email:EMAIL,password:o});if(v.error)return toast('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+    const {error}=await sb.auth.updateUser({password:n1});if(error)return toast('เปลี่ยนรหัสผ่านไม่สำเร็จ: '+thErr(error));['pwOld','pwNew','pwNew2'].forEach(i=>$('#'+i).value='');toast('เปลี่ยนรหัสผ่านแล้ว')};
   $('#chLogo').onclick=()=>$('#logoIn').click();
   $('#rsLogo')&&($('#rsLogo').onclick=()=>{st.logo='';render()});
   $('#bk').onclick=()=>download(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),`สำรองข้อมูลสมุดครู ${new Date().toISOString().slice(0,10)}.json`);
@@ -481,51 +488,84 @@ function bindTermPanel(){
     S.settings.term=t;S.settings.year=y;UI.cls=null;render();toast(`เพิ่มภาคเรียนที่ ${k} แล้ว${n?` (คัดลอก ${n} วิชา)`:''}`)};
 }
 
-/* ---------- login (accounts stored in this browser) ---------- */
-const USERS_KEY='teacherbook.users',LEGACY='teacherbook.v1';
-function users(){try{return JSON.parse(LS.get(USERS_KEY))||[]}catch(e){return[]}}
-function saveUsers(a){LS.set(USERS_KEY,JSON.stringify(a))}
-async function hashPw(pw,salt){if(!(window.crypto&&crypto.subtle))throw new Error('เบราว์เซอร์นี้ไม่รองรับการเข้ารหัส ใช้ Chrome หรือ Edge รุ่นใหม่');
-  const enc=new TextEncoder();const k=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
-  const b=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(salt),iterations:150000,hash:'SHA-256'},k,256);return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-function sessionUser(){try{const s=sessionStorage.getItem('teacherbook.session');if(s)return s}catch(e){}
-  try{const r=JSON.parse(LS.get('teacherbook.remember'));if(r&&r.exp>Date.now())return r.u}catch(e){}return null}
-function setSession(u,remember){try{sessionStorage.setItem('teacherbook.session',u)}catch(e){}if(remember)LS.set('teacherbook.remember',JSON.stringify({u,exp:Date.now()+30*864e5}));else LS.del('teacherbook.remember')}
-function start(u){USER=u;const me=users().find(x=>x.u===u);
-  let d=loadUser(u);if(!d){d=seed();if(me&&me.name)d.settings.teacher=me.name}
-  S=migrate(d);try{UI=JSON.parse(LS.get(uiKey(u)))||{}}catch(e){UI={}}UI.tab=UI.tab||'check';UI.week=UI.week||1;
-  $('#loginView').hidden=true;$('#appHeader').hidden=false;$('#view').hidden=false;render()}
-function logout(){flush();try{sessionStorage.removeItem('teacherbook.session')}catch(e){}LS.del('teacherbook.remember');USER=null;S=null;UI={};
-  $('#appHeader').hidden=true;$('#view').hidden=true;$('#view').innerHTML='';showLogin('login')}
-function showLogin(mode){const us=users();if(!us.length)mode='register';const legacy=!us.length&&LS.get(LEGACY);
-  const L=$('#loginView');L.hidden=false;
+/* ---------- login + cloud sync (Supabase) ---------- */
+const SB_URL='https://fxbrvpxcocpyphzevgqz.supabase.co',SB_KEY='sb_publishable_rKIHaCkXnu-p4pEYZmM19Q_OsjFjmcn';
+const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null;
+const LEGACY='teacherbook.v1';
+let EMAIL='',SYNC={dirty:false,busy:false,at:null,err:''},cloudT;
+const siteUrl=()=>location.href.split('#')[0].split('?')[0];
+function thErr(e){const m=(e&&e.message)||String(e);
+  if(/Invalid login credentials/i.test(m))return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+  if(/Email not confirmed/i.test(m))return 'ยังไม่ได้ยืนยันอีเมล เปิดอีเมลแล้วกดลิงก์ยืนยันก่อน';
+  if(/already registered|already been registered/i.test(m))return 'อีเมลนี้สมัครไว้แล้ว ให้เข้าสู่ระบบแทน';
+  if(/rate limit|too many/i.test(m))return 'ส่งคำขอบ่อยเกินไป รอสักครู่แล้วลองใหม่';
+  if(/Failed to fetch|NetworkError|network/i.test(m))return 'เชื่อมต่ออินเทอร์เน็ตไม่ได้';
+  if(/Password should be/i.test(m))return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
+  return m}
+function setSync(){const el=$('#syncSt');if(!el)return;el.className='sync'+(SYNC.err?' err':SYNC.dirty||SYNC.busy?' busy':'');
+  el.textContent=SYNC.err?'ยังไม่ได้บันทึกขึ้นคลาวด์':SYNC.dirty||SYNC.busy?'กำลังบันทึก…':'บันทึกขึ้นคลาวด์แล้ว';el.title=SYNC.err||''}
+function queueCloud(){SYNC.dirty=true;setSync();clearTimeout(cloudT);cloudT=setTimeout(pushCloud,1500)}
+async function pushCloud(){if(!USER||!S||!sb)return;if(SYNC.busy){clearTimeout(cloudT);cloudT=setTimeout(pushCloud,800);return}
+  SYNC.busy=true;SYNC.dirty=false;setSync();
+  const {data,error}=await sb.from('teacher_books').upsert({user_id:USER,data:S}).select('updated_at').single();
+  SYNC.busy=false;
+  if(error){SYNC.dirty=true;SYNC.err=thErr(error);clearTimeout(cloudT);cloudT=setTimeout(pushCloud,10000)}else{SYNC.err='';SYNC.at=data.updated_at}
+  setSync()}
+async function pullCloud(){if(!USER||!sb||SYNC.dirty||SYNC.busy)return;
+  const {data,error}=await sb.from('teacher_books').select('data,updated_at').eq('user_id',USER).maybeSingle();
+  if(error||!data||SYNC.dirty)return;if(SYNC.at&&new Date(data.updated_at)<=new Date(SYNC.at))return;
+  S=migrate(data.data);SYNC.at=data.updated_at;flushLocal();render();toast('อัปเดตข้อมูลล่าสุดจากเครื่องอื่นแล้ว')}
+function flushLocal(){if(USER&&S){LS.set(dataKey(USER),JSON.stringify(S));LS.set(uiKey(USER),JSON.stringify(UI))}}
+function localCandidates(){const out=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k===LEGACY||/^teacherbook\.d\./.test(k)){try{const d=JSON.parse(localStorage.getItem(k));if(d&&d.classes&&d.classes.some(c=>!c.example))out.push(d)}catch(e){}}}}catch(e){}
+  return out.sort((a,b)=>b.classes.length-a.classes.length)}
+function showApp(){$('#loginView').hidden=true;$('#appHeader').hidden=false;$('#view').hidden=false}
+async function start(user){USER=user.id;EMAIL=user.email||'';const name=(user.user_metadata&&user.user_metadata.name)||'';
+  const L=$('#loginView');L.hidden=false;L.innerHTML='<div class="lcard"><p class="hint" style="margin:0">กำลังโหลดข้อมูลจากฐานข้อมูล…</p></div>';
+  try{UI=JSON.parse(LS.get(uiKey(USER)))||{}}catch(e){UI={}}UI.tab=UI.tab||'check';UI.week=UI.week||1;
+  const {data,error}=await sb.from('teacher_books').select('data,updated_at').eq('user_id',USER).maybeSingle();
+  if(error){const cache=loadUser(USER);if(!cache){L.innerHTML=`<div class="lcard"><b>เชื่อมต่อฐานข้อมูลไม่ได้</b><p class="lerr">${esc(thErr(error))}</p><button class="btn pri" onclick="location.reload()">ลองอีกครั้ง</button></div>`;return}
+    S=migrate(cache);SYNC.err='ออฟไลน์: ใช้ข้อมูลในเครื่อง จะบันทึกขึ้นคลาวด์เมื่อเชื่อมต่อได้';SYNC.dirty=true;showApp();render();setSync();cloudT=setTimeout(pushCloud,10000);return}
+  if(data){S=migrate(data.data);SYNC.at=data.updated_at;showApp();render();setSync();return}
+  // first sign-in: bring data saved in this browser by the earlier version, else start with an example class
+  const local=loadUser(USER)||localCandidates()[0];let d=local;if(!d){d=seed();if(name)d.settings.teacher=name}
+  S=migrate(JSON.parse(JSON.stringify(d)));showApp();render();await pushCloud();
+  toast(local?'นำข้อมูลเดิมในเครื่องนี้ขึ้นฐานข้อมูลออนไลน์แล้ว':'สร้างสมุดบันทึกแล้ว (มีวิชาตัวอย่างให้ลองใช้)')}
+async function logout(){const lb=$('#logoutBtn');lb.disabled=true;lb.textContent='กำลังออก…';clearTimeout(cloudT);if(SYNC.dirty)await pushCloud();flushLocal();if(sb)await sb.auth.signOut();
+  USER=null;S=null;UI={};EMAIL='';SYNC={dirty:false,busy:false,at:null,err:''};$('#appHeader').hidden=true;$('#view').hidden=true;$('#view').innerHTML='';lb.disabled=false;lb.textContent='ออกจากระบบ';showLogin('login')}
+function showLogin(mode,msg){const L=$('#loginView');L.hidden=false;
+  const tabs=mode==='reset'?'':`<div class="ltabs"><button type="button" class="${mode==='login'?'on':''}" data-lm="login">เข้าสู่ระบบ</button><button type="button" class="${mode==='register'?'on':''}" data-lm="register">สมัครบัญชีครู</button></div>`;
   L.innerHTML=`<form class="lcard" id="lForm" autocomplete="on"><div class="lh"><img src="${DEFAULT_LOGO}" alt="ตราวิทยาลัย"><div><b>สมุดบันทึกการสอน</b><span class="hint">เช็คชื่อ · คะแนน · จิตพิสัย · บันทึกหลังการสอน</span></div></div>
-   ${us.length?`<div class="ltabs"><button type="button" class="${mode==='login'?'on':''}" data-lm="login">เข้าสู่ระบบ</button><button type="button" class="${mode==='register'?'on':''}" data-lm="register">สร้างบัญชีครู</button></div>`:'<div><b>สร้างบัญชีครูเพื่อเริ่มใช้งาน</b></div>'}
-   <label class="f">ชื่อผู้ใช้<input type="text" id="lUser" autocomplete="username" autocapitalize="none" placeholder="เช่น rittikrai" required></label>
-   ${mode==='register'?'<label class="f">ชื่อ-นามสกุล ครูผู้สอน<input type="text" id="lName" autocomplete="name" placeholder="นายฤทธิไกร ด้วงจุมพล"></label>':''}
-   <label class="f">รหัสผ่าน<input type="password" id="lPw" autocomplete="${mode==='register'?'new-password':'current-password'}" required></label>
-   ${mode==='register'?'<label class="f">ยืนยันรหัสผ่าน<input type="password" id="lPw2" autocomplete="new-password" required></label>':''}
-   ${mode==='register'&&legacy?'<div class="checks"><label><input type="checkbox" id="lLegacy" checked> นำข้อมูลเดิมที่บันทึกไว้ในเครื่องนี้มาใช้กับบัญชีนี้</label></div>':''}
-   ${mode==='login'?'<div class="checks"><label><input type="checkbox" id="lRem"> จำการเข้าสู่ระบบไว้ 30 วัน (เครื่องส่วนตัวเท่านั้น)</label></div>':''}
+   ${tabs}${mode==='reset'?'<b>ตั้งรหัสผ่านใหม่</b>':''}
+   ${msg?`<p class="lmsg">${esc(msg)}</p>`:''}
+   ${mode==='register'?'<label class="f">ชื่อ-นามสกุล ครูผู้สอน<input type="text" id="lName" autocomplete="name" placeholder="นายฤทธิไกร ด้วงจุมพล" required></label>':''}
+   ${mode!=='reset'?'<label class="f">อีเมล<input type="email" id="lEmail" autocomplete="email" autocapitalize="none" required></label>':''}
+   ${mode!=='forgot'?`<label class="f">${mode==='reset'?'รหัสผ่านใหม่':'รหัสผ่าน'}<input type="password" id="lPw" autocomplete="${mode==='login'?'current-password':'new-password'}" required minlength="6"></label>`:''}
+   ${mode==='register'||mode==='reset'?'<label class="f">ยืนยันรหัสผ่าน<input type="password" id="lPw2" autocomplete="new-password" required></label>':''}
    <p class="lerr" id="lErr"></p>
-   <button class="btn pri" type="submit" style="padding:9px">${mode==='register'?'สร้างบัญชีและเข้าสู่ระบบ':'เข้าสู่ระบบ'}</button>
-   <p class="hint" style="margin:0">บัญชีและข้อมูลเก็บไว้ในเบราว์เซอร์ของเครื่องนี้ ครูแต่ละคนมีข้อมูลแยกกัน ถ้าลืมรหัสผ่านจะเปิดบัญชีเดิมไม่ได้ ควรดาวน์โหลดไฟล์สำรองในแท็บ “ตั้งค่า” เป็นประจำ</p></form>`;
+   <button class="btn pri" type="submit" id="lBtn" style="padding:9px">${{login:'เข้าสู่ระบบ',register:'สมัครบัญชี',forgot:'ส่งลิงก์ตั้งรหัสผ่านใหม่',reset:'บันทึกรหัสผ่านใหม่'}[mode]}</button>
+   ${mode==='login'?'<button type="button" class="linkbtn" data-lm="forgot">ลืมรหัสผ่าน?</button>':mode==='forgot'?'<button type="button" class="linkbtn" data-lm="login">กลับไปหน้าเข้าสู่ระบบ</button>':''}
+   <p class="hint" style="margin:0">ข้อมูลเก็บในฐานข้อมูลออนไลน์ เข้าสู่ระบบจากคอมพิวเตอร์หรือมือถือเครื่องไหนก็เห็นข้อมูลเดียวกัน ครูแต่ละคนเห็นเฉพาะข้อมูลของตัวเอง</p></form>`;
   L.querySelectorAll('[data-lm]').forEach(b=>b.onclick=()=>showLogin(b.dataset.lm));
-  $('#lUser').focus();
-  $('#lForm').onsubmit=async e=>{e.preventDefault();const err=m=>{$('#lErr').textContent=m};
-    const u=$('#lUser').value.trim().toLowerCase(),pw=$('#lPw').value;
-    try{if(mode==='register'){
-      if(!/^[a-z0-9._-]{3,30}$/.test(u))return err('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - ยาว 3–30 ตัว');
-      if(users().some(x=>x.u===u))return err('มีชื่อผู้ใช้นี้ในเครื่องแล้ว');
-      if(pw.length<6)return err('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');if(pw!==$('#lPw2').value)return err('ยืนยันรหัสผ่านไม่ตรงกัน');
-      const salt=uid()+uid(),name=$('#lName').value.trim();const all=users();all.push({u,name,salt,hash:await hashPw(pw,salt),created:Date.now()});saveUsers(all);
-      if($('#lLegacy')?.checked){const old=LS.get(LEGACY);if(old){LS.set(dataKey(u),old);const oui=LS.get(LEGACY+'.ui');if(oui)LS.set(uiKey(u),oui);LS.del(LEGACY);LS.del(LEGACY+'.ui')}}
-      setSession(u,false);start(u);toast('สร้างบัญชีแล้ว ยินดีต้อนรับ')
-    }else{const me=users().find(x=>x.u===u);if(!me||await hashPw(pw,me.salt)!==me.hash)return err('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-      setSession(u,$('#lRem').checked);start(u)}}catch(ex){err(ex.message)}};
+  (L.querySelector('input'))?.focus();
+  if(!sb){$('#lErr').textContent='โหลดระบบฐานข้อมูลไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้า';return}
+  $('#lForm').onsubmit=async e=>{e.preventDefault();const err=m=>{$('#lErr').textContent=m};err('');const btn=$('#lBtn');btn.disabled=true;
+    try{const email=$('#lEmail')?.value.trim(),pw=$('#lPw')?.value;
+      if(mode==='login'){const {data,error}=await sb.auth.signInWithPassword({email,password:pw});if(error)return err(thErr(error));await start(data.user)}
+      else if(mode==='register'){if(pw.length<6)return err('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');if(pw!==$('#lPw2').value)return err('ยืนยันรหัสผ่านไม่ตรงกัน');
+        const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{name:$('#lName').value.trim()},emailRedirectTo:siteUrl()}});if(error)return err(thErr(error));
+        if(data.session)await start(data.user);else showLogin('login',`ส่งลิงก์ยืนยันไปที่ ${email} แล้ว เปิดอีเมลแล้วกดลิงก์ยืนยัน จากนั้นกลับมาเข้าสู่ระบบที่นี่`)}
+      else if(mode==='forgot'){const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:siteUrl()});if(error)return err(thErr(error));showLogin('login',`ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${email} แล้ว`)}
+      else if(mode==='reset'){if(pw.length<6)return err('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');if(pw!==$('#lPw2').value)return err('ยืนยันรหัสผ่านไม่ตรงกัน');
+        const {data,error}=await sb.auth.updateUser({password:pw});if(error)return err(thErr(error));toast('ตั้งรหัสผ่านใหม่แล้ว');await start(data.user)}
+    }catch(ex){err(thErr(ex))}finally{btn.disabled=false}};
 }
-function boot(){const u=sessionUser();if(u&&users().some(x=>x.u===u))start(u);else showLogin('login')}
-addEventListener('beforeunload',flush);
+let recovering=false;
+async function boot(){if(!sb)return showLogin('login');
+  sb.auth.onAuthStateChange((ev)=>{if(ev==='PASSWORD_RECOVERY'){recovering=true;$('#appHeader').hidden=true;$('#view').hidden=true;showLogin('reset')}});
+  const {data}=await sb.auth.getSession();if(recovering)return;
+  if(data.session)await start(data.session.user);else showLogin('login')}
+addEventListener('beforeunload',e=>{flushLocal();if(SYNC.dirty||SYNC.busy){pushCloud();e.preventDefault();e.returnValue=''}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullCloud();else if(SYNC.dirty){clearTimeout(cloudT);pushCloud()}});
 
 /* ---------- risk report ---------- */
 function gasCode(){return `// สมุดบันทึกการสอน: ส่งอีเมลแจ้งนักเรียนกลุ่มเสี่ยง
