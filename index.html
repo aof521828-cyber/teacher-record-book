@@ -493,7 +493,8 @@ const SB_URL='https://fxbrvpxcocpyphzevgqz.supabase.co',SB_KEY='sb_publishable_r
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null;
 const LEGACY='teacherbook.v1';
 let EMAIL='',SYNC={dirty:false,busy:false,at:null,err:''},cloudT;
-const siteUrl=()=>location.href.split('#')[0].split('?')[0];
+const WEB_URL='https://aof521828-cyber.github.io/teacher-record-book/';
+const siteUrl=()=>isNative()||location.protocol==='file:'?WEB_URL:location.href.split('#')[0].split('?')[0];
 function thErr(e){const m=(e&&e.message)||String(e);
   if(/Invalid login credentials/i.test(m))return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
   if(/Email not confirmed/i.test(m))return 'ยังไม่ได้ยืนยันอีเมล เปิดอีเมลแล้วกดลิงก์ยืนยันก่อน';
@@ -615,7 +616,7 @@ function vRisk(v,c){
   const get=()=>({to:$('#rkTo').value.trim(),cc:$('#rkCc').value.trim(),subject:$('#rkSub').value,body:$('#rkBody').value});
   const need=d=>{if(!d.to){toast('ใส่อีเมลผู้รับก่อน');$('#rkTo').focus();return false}return true};
   $('#rkGmail').onclick=()=>{const d=get();if(!need(d))return;const q=new URLSearchParams({view:'cm',fs:'1',to:d.to,su:d.subject,body:d.body});if(d.cc)q.set('cc',d.cc);
-    window.open('https://mail.google.com/mail/?'+q.toString().replace(/\+/g,'%20'),'_blank')};
+    openExternal('https://mail.google.com/mail/?'+q.toString().replace(/\+/g,'%20'))};
   $('#rkMail').onclick=()=>{const d=get();if(!need(d))return;location.href=`mailto:${encodeURIComponent(d.to).replace(/%2C/gi,',').replace(/%40/g,'@')}?${d.cc?'cc='+encodeURIComponent(d.cc)+'&':''}subject=${encodeURIComponent(d.subject)}&body=${encodeURIComponent(d.body)}`};
   $('#rkCopy').onclick=()=>{const d=get();copyText(d.subject+'\n\n'+d.body,$('#rkBody'))};
   $('#rkReset').onclick=()=>render();
@@ -755,13 +756,25 @@ async function makePDF(c,notes,fname){
   try{await document.fonts.ready;
     // shrink a page that would overflow A4 so each note stays on one sheet
     stage.querySelectorAll('.a4').forEach(pg=>{const max=pg.offsetWidth*297/210;if(pg.scrollHeight>max){pg.style.fontSize=(14.5*Math.max(.78,max/pg.scrollHeight)).toFixed(2)+'px'}pg.style.height=(max-2)+'px';pg.style.overflow='hidden'});
-    await html2pdf().set({margin:0,filename:fname,image:{type:'jpeg',quality:.96},html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css'],before:'.pg-break'}}).from($('#pdfRoot')).save();
-    toast('ดาวน์โหลด PDF แล้ว')}catch(e){console.error(e);toast('สร้าง PDF ไม่สำเร็จ: '+e.message)}
+    await html2pdf().set({margin:0,filename:fname,image:{type:'jpeg',quality:.96},html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css'],before:'.pg-break'}}).from($('#pdfRoot')).outputPdf('blob').then(b=>download(b,fname));
+    if(!isNative())toast('ดาวน์โหลด PDF แล้ว')}catch(e){console.error(e);toast('สร้าง PDF ไม่สำเร็จ: '+e.message)}
   finally{stage.innerHTML='';busy=false}
 }
 
 /* ---------- Excel ---------- */
-function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name.replace(/[\\/:*?"<>|]/g,'-');document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+/* ---------- files & links (browser or Android app) ---------- */
+const isNative=()=>!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+const plug=n=>{plug.c=plug.c||{};return plug.c[n]||(plug.c[n]=window.Capacitor.registerPlugin(n))};
+const blobB64=b=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(b)});
+async function download(blob,name){name=name.replace(/[\\/:*?"<>|]/g,'-');
+  if(isNative()){try{const FS=plug('Filesystem'),data=await blobB64(blob);let uri,where='';
+      try{uri=(await FS.writeFile({path:'สมุดบันทึกการสอน/'+name,data,directory:'DOCUMENTS',recursive:true})).uri;where='Documents/สมุดบันทึกการสอน'}
+      catch(e){uri=(await FS.writeFile({path:name,data,directory:'CACHE'})).uri}
+      if(where)toast('บันทึกไฟล์ไว้ที่ '+where);
+      await plug('Share').share({title:name,files:[uri],dialogTitle:'เปิดหรือส่งไฟล์'})}
+    catch(e){if(!/cancel/i.test((e&&e.message)||''))toast('บันทึกไฟล์ไม่สำเร็จ: '+((e&&e.message)||e))}return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+function openExternal(url){if(isNative()){plug('Browser').open({url}).catch(()=>{location.href=url});return}window.open(url,'_blank')}
 async function exportExcel(c){
   if(!c)return toast('ยังไม่มีรายวิชา');if(typeof ExcelJS==='undefined')return toast('โหลดตัวสร้าง Excel ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้าใหม่');
   const st=S.settings, FN='TH SarabunPSK';
@@ -886,8 +899,8 @@ async function exportExcel(c){
   kr+=2;mput(rk,kr,1,kr,4,'ลงชื่อ.......................................................ครูผู้สอน',{size:14});mput(rk,kr,6,kr,9,`ลงชื่อ.......................................................${headTitle()}`,{size:14});kr++;mput(rk,kr,1,kr,4,`( ${st.teacher} )`,{size:14});mput(rk,kr,6,kr,9,`( ${headOf(c)||'.......................................................'} )`,{size:14});
 
   const buf=await wb.xlsx.writeBuffer();
-  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`แบบฟอร์มวัดผล ${c.code} ${c.name} ${c.group} ภาคเรียนที่ ${term}-${yr}.xlsx`);
-  toast('ดาวน์โหลด Excel แล้ว (หน้าปก + เวลาเรียน/คะแนน + จิตพิสัย + กลุ่มเสี่ยง)');
+  await download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`แบบฟอร์มวัดผล ${c.code} ${c.name} ${c.group} ภาคเรียนที่ ${term}-${yr}.xlsx`);
+  if(!isNative())toast('ดาวน์โหลด Excel แล้ว (หน้าปก + เวลาเรียน/คะแนน + จิตพิสัย + กลุ่มเสี่ยง)');
 }
 
 boot();

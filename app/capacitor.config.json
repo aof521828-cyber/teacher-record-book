@@ -1,0 +1,6 @@
+{
+  "appId": "th.ac.kyc.teacherbook",
+  "appName": "สมุดบันทึกการสอน",
+  "webDir": "www",
+  "android": { "adjustMarginsForEdgeToEdge": "force" }
+}
